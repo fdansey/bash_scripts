@@ -1,0 +1,127 @@
+#!/usr/bin/expect -f
+
+# When using send_user, one needs to escape the '[' part of the escape
+# sequence to use colours.
+
+## Send to stdout
+#send_user "Attempting to ssh to ${argv}\n"
+
+# Read from stdin
+#expect_user -re "(.*)\n"
+
+set varOpt ${argv}
+
+set var1 "@dm1nS3rv3r"
+set var2 "Aut01nstall"
+
+send_user "\033\[2;37m"
+
+#send_user "[lrange $argv 1 1]\n"
+set ipaddress [lrange $argv 0 0]
+set local_ip [lrange $argv 1 1]
+
+spawn -noecho ssh -q -y -o StrictHostKeyChecking=no root@${ipaddress}
+
+#set timeout 8
+
+#expect {
+#    "Are you sure you want to continue connecting" {
+#        send "yes\r"
+#    } timeout {
+#        send_user "\033\[31;46mDid not find continue line\033\[0m\n"
+#        exit
+#    }
+#}
+
+# quite a long wait
+#send_user "\nWaiting for password prompt"
+set timeout 8
+
+expect {
+    "password:" {
+        set pwdused "first"
+        send_user "\n\033\[1A\033\[30G\033\[2;33mTrying first password\033\[0m"
+        send "$var1\r"
+    } timeout {
+        send_user "\033\[1;37;40mTimeout\033\[0m\n"
+        exit 1
+    } eof {
+        send_user "\033\[30;46mConnection refused to ${ipaddress}\033\[0m\n"
+        exit 2
+    }
+}
+send_user "\033\[2;37m"
+
+expect {
+    "password:" {
+        # Try second password
+        set pwdused "second"
+        send_user "\n\033\[1A\033\[30G\033\[2;33mTrying other password\033\[0m\n"
+        send "$var2\r"
+    } "You are required" {
+        # to change your password immediately
+        exit 8
+    } "root" {
+        # Login successful
+    } timeout {
+        send_user "\033\[37;46mwrong password\033\[0m\n"
+        exit 3
+    } eof {
+        send_user "\033\[30;46mConnection refused (B) to ${ipaddress}\033\[0m\n"
+        exit 2
+    }
+}
+
+expect {
+    "~]#" {
+        send_user "\033\[2AConnected\033\[2B\033\[15G"
+        #send "sed -i '/$local_ip/d' /var/log/secure\r"
+        #send "sed -i '/^sed/d' ~/.bash_history\r"
+    } timeout {
+        send_user "timeout\n"
+        exit 5
+    } default {
+        send_user "Don't know password\n"
+        exit 4
+    }
+}
+
+if {[lrange $argv 1 1]!="nointeract"} {
+
+    set CTRLZ \032
+
+    # In the 'interact' session, 'send_user' prints to std_out, 'send'
+    # prints to the ssh process
+
+    # Change colour to cherry red
+    send_user "\033\[2;31m"
+
+    interact {
+        -reset $CTRLZ {exec kill -STOP [pid]}
+        \003   {
+             send "\003"
+            }
+    #    foo    {send_user "user_spawn_id = $user_spawn_id\n"}
+
+        # Send a backspace every 60 seconds
+        timeout 60 {send "\010"}
+    }
+    exit
+}
+
+# If second argument is supplied, then do exit and do not interact
+
+send "who|wc -l\r"
+expect {
+    "~]#" {
+    }
+}
+
+if {$pwdused=="first"} {
+    exit 6
+} else {
+    exit 7
+}
+
+
+exit
